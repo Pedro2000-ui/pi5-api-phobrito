@@ -8,8 +8,8 @@ from app.schemas import AITurnRequest, TurnPhase
 from app.logic import choose_setup, choose_turn
 
 app = FastAPI(
-  title="Claudio - O Jogador Inteligente",
-  description="API do Claudio, para o PI5",
+  title="Phobrito - O Jogador Número 1",
+  description="API do phobrito, para o PI5",
   version="0.1.0"
 )
 

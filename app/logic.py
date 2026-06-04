@@ -277,18 +277,140 @@ def score_move(board, move, team_id):
 
     return score
 
-def choose_setup(board: list[list[Cell]]) -> SetupResponse:
+def choose_setup(
+    board: list[list[Cell]],
+    professor_to_place: str,
+) -> SetupResponse:
+
     """
     Fase de posicionamento: escolhe uma casa de nivel 0 desocupada.
     """
+
+    def is_available(row, col):
+
+        return (
+            0 <= row < BOARD_SIZE
+            and 0 <= col < BOARD_SIZE
+            and board[row][col].level == 0
+            and board[row][col].professor is None
+        )
+
+    #
+    # prioriza o centro se for o primeiro professor, senão prioriza ficar próximo ao seu parceiro
+    #
+    if professor_to_place == "CLARO":
+
+        rey_pos = find_professor(
+            board,
+            "REY",
+        )
+
+        if rey_pos:
+            row, col = rey_pos
+
+            for dst_row, dst_col in adjacent_cells(
+                row,
+                col,
+            ):
+
+                if is_available(
+                    dst_row,
+                    dst_col,
+                ):
+                    return SetupResponse(
+                        row=dst_row,
+                        col=dst_col,
+                    )
+        else:
+
+            priorities = [
+                (2, 2),
+
+                (2, 1),
+                (2, 3),
+                (1, 2),
+                (3, 2),
+
+                (1, 1),
+                (1, 3),
+                (3, 1),
+                (3, 3),
+            ]
+
+            for row, col in priorities:
+
+                if is_available(row, col):
+                    return SetupResponse(
+                        row=row,
+                        col=col,
+                    )
+
+    #
+    # prioriza o centro se for o primeiro professor, senão prioriza ficar próximo ao seu parceiro
+    #
+    if professor_to_place == "REY":
+
+        claro_pos = find_professor(
+            board,
+            "CLARO",
+        )
+
+        if claro_pos:
+
+            row, col = claro_pos
+
+            for dst_row, dst_col in adjacent_cells(
+                row,
+                col,
+            ):
+
+                if is_available(
+                    dst_row,
+                    dst_col,
+                ):
+                    return SetupResponse(
+                        row=dst_row,
+                        col=dst_col,
+                    )
+
+        else:
+            priorities = [
+            (2, 2),
+
+            (2, 1),
+            (2, 3),
+            (1, 2),
+            (3, 2),
+
+            (1, 1),
+            (1, 3),
+            (3, 1),
+            (3, 3),
+        ]
+
+        for row, col in priorities:
+
+            if is_available(row, col):
+                return SetupResponse(
+                    row=row,
+                    col=col,
+                )
+    #
+    # fallback
+    #
     candidates = [
         (r, c)
         for r in range(BOARD_SIZE)
         for c in range(BOARD_SIZE)
-        if board[r][c].level == 0 and board[r][c].professor is None
+        if is_available(r, c)
     ]
+
     row, col = random.choice(candidates)
-    return SetupResponse(row=row, col=col)
+
+    return SetupResponse(
+        row=row,
+        col=col,
+    )
 
 def choose_turn(
     board,

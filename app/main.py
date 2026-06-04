@@ -27,7 +27,7 @@ async def move(body: AITurnRequest):
   # para simular um tempo de resposta mais realista, vou adicionar um delay aqui
   await asyncio.sleep(random.choice([1.0, 1.5, 2, 2.5, 3]))
   if body.turn_phase == TurnPhase.SETUP:
-    return choose_setup(body.board)
+    return choose_setup(body.board, body.professor_to_place)
   else:
     jogada = choose_turn(body.board, int(body.your_team))
     return jogada

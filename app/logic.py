@@ -37,6 +37,245 @@ def find_professor(board: list[list[Cell]], name: str) -> Optional[tuple[int, in
                 return (r, c)
     return None
 
+def generate_moves(board, team_id):
+    moves = []
+
+    for professor in TEAM_PROFESSORS[team_id]:
+
+        pos = find_professor(board, professor)
+
+        if pos is None:
+            continue
+
+        cur_row, cur_col = pos
+        cur_level = board[cur_row][cur_col].level
+
+        for dst_row, dst_col in adjacent_cells(cur_row, cur_col):
+
+            dst_cell = board[dst_row][dst_col]
+
+            if dst_cell.professor is not None:
+                continue
+
+            if dst_cell.level == 4:
+                continue
+
+            if dst_cell.level > cur_level + 1:
+                continue
+
+            #
+            # vitória imediata
+            #
+            if dst_cell.level == 3:
+                moves.append(
+                    PlayerTurnResponse(
+                        professor=professor,
+                        move_to=Position(
+                            row=dst_row,
+                            col=dst_col,
+                        ),
+                    )
+                )
+                continue
+
+            #
+            # mentorias possíveis
+            #
+            for men_row, men_col in adjacent_cells(dst_row, dst_col):
+
+                men_cell = board[men_row][men_col]
+
+                is_source = (
+                    men_row == cur_row
+                    and men_col == cur_col
+                )
+
+                if (
+                    men_cell.level < 4
+                    and (
+                        men_cell.professor is None
+                        or is_source
+                    )
+                ):
+                    moves.append(
+                        PlayerTurnResponse(
+                            professor=professor,
+                            move_to=Position(
+                                row=dst_row,
+                                col=dst_col,
+                            ),
+                            mentor_at=Position(
+                                row=men_row,
+                                col=men_col,
+                            ),
+                        )
+                    )
+
+    return moves
+
+import copy
+
+def apply_move(board, move):
+
+    board = copy.deepcopy(board)
+
+    pos = find_professor(
+        board,
+        move.professor,
+    )
+
+    if pos is None:
+        return board
+
+    src_row, src_col = pos
+
+    dst_row = move.move_to.row
+    dst_col = move.move_to.col
+
+    board[src_row][src_col].professor = None
+
+    board[dst_row][dst_col].professor = move.professor
+
+    if move.mentor_at is not None:
+
+        mr = move.mentor_at.row
+        mc = move.mentor_at.col
+
+        if board[mr][mc].level < 4:
+            board[mr][mc].level += 1
+
+    return board
+
+def enemy_team(team_id):
+    return 2 if team_id == 1 else 1
+
+def enemy_has_immediate_win(board, team_id):
+
+    enemy = enemy_team(team_id)
+
+    for move in generate_moves(board, enemy):
+
+        dst = board[
+            move.move_to.row
+        ][
+            move.move_to.col
+        ]
+
+        if dst.level == 3:
+            return True
+
+    return False
+
+def score_move(board, move, team_id):
+
+    score = 0
+
+    simulated = apply_move(
+        board,
+        move,
+    )
+
+    print(
+        "AMEACA_INIMIGA",
+        move.professor,
+        move.move_to.row,
+        move.move_to.col,
+        enemy_has_immediate_win(
+            simulated,
+            team_id,
+        )
+    )
+
+    #
+    # PRIORIDADE 1
+    # impedir vitória adversária
+    #
+
+    if not enemy_has_immediate_win(
+        simulated,
+        team_id,
+    ):
+        score += 10000
+
+    #
+    # PRIORIDADE 2
+    # subir de nível
+    #
+
+    current_pos = find_professor(
+        board,
+        move.professor,
+    )
+
+    if current_pos:
+
+        cur_row, cur_col = current_pos
+
+        current_level = board[
+            cur_row
+        ][
+            cur_col
+        ].level
+
+        destination_level = board[
+            move.move_to.row
+        ][
+            move.move_to.col
+        ].level
+
+        delta = (
+            destination_level
+            - current_level
+        )
+
+        score += delta * 500
+
+        score += (
+            destination_level ** 2
+        ) * 100
+
+    #
+    # PRIORIDADE 3
+    # vitória própria
+    #
+
+    dst_level = board[
+        move.move_to.row
+    ][
+        move.move_to.col
+    ].level
+
+    if dst_level == 3:
+        score += 1000
+
+    #
+    # PRIORIDADE 4
+    # criar torres úteis
+    #
+
+    if move.mentor_at:
+
+        mr = move.mentor_at.row
+        mc = move.mentor_at.col
+
+        current = board[mr][mc].level
+        future = min(
+            current + 1,
+            4,
+        )
+
+        if future == 2:
+            score += 50
+
+        elif future == 3:
+            score += 150
+
+        elif future == 4:
+            score += 200
+
+    score += random.randint(0, 10)
+
+    return score
 
 def choose_setup(board: list[list[Cell]]) -> SetupResponse:
     """
@@ -51,70 +290,54 @@ def choose_setup(board: list[list[Cell]]) -> SetupResponse:
     row, col = random.choice(candidates)
     return SetupResponse(row=row, col=col)
 
+def choose_turn(
+    board,
+    team_id,
+) -> Optional[PlayerTurnResponse]:
 
-def choose_turn(board: list[list[Cell]], team_id: int) -> Optional[PlayerTurnResponse]:
-    """
-    Fase de turno: decide qual professor mover, para onde, e onde mentorar.
+    moves = generate_moves(
+        board,
+        team_id,
+    )
 
-    Estrategia:
-      1. Se existe jogada de vitoria (mover para celula nivel 3), faz ela.
-      2. Caso contrario, escolhe uma jogada aleatoria valida.
+    if not moves:
+        return None
 
-    Regras respeitadas:
-      - So move para casa adjacente
-      - Nao move para casa ocupada
-      - Nao move para casa nivel 4 (graduada)
-      - Nao sobe mais de 1 nivel por movimento
-      - Mentoria deve ser adjacente ao destino
-      - Nao mentora casa ocupada (exceto a casa de origem)
-      - Nao mentora casa nivel 4
-    """
-    winning_moves: list[PlayerTurnResponse] = []
-    candidate_moves: list[PlayerTurnResponse] = []
+    best_move = None
+    best_score = float("-inf")
 
-    for professor in TEAM_PROFESSORS[team_id]:
-        pos = find_professor(board, professor)
-        if pos is None:
-            continue
+    for move in moves:
 
-        cur_row, cur_col = pos
-        cur_level = board[cur_row][cur_col].level
+        score = score_move(
+            board,
+            move,
+            team_id,
+        )
 
-        # Tenta cada casa vizinha como destino
-        for dst_row, dst_col in adjacent_cells(cur_row, cur_col):
-            dst_cell = board[dst_row][dst_col]
+        print(
+        {
+            "professor": move.professor,
+            "row": move.move_to.row,
+            "col": move.move_to.col,
+            "mentor": (
+                None
+                if move.mentor_at is None
+                else (
+                    move.mentor_at.row,
+                    move.mentor_at.col,
+                )
+            ),
+            "score": score,
+        })
 
-            # Casa ocupada, graduada, ou nivel alto demais? Pula.
-            if dst_cell.professor is not None:
-                continue
-            if dst_cell.level == 4:
-                continue
-            if dst_cell.level > cur_level + 1:
-                continue
+        if score > best_score:
 
-            # Jogada de vitoria! Mover para nivel 3 vence o jogo.
-            if dst_cell.level == 3:
-                winning_moves.append(PlayerTurnResponse(
-                    professor=professor,
-                    move_to=Position(row=dst_row, col=dst_col),
-                ))
-                continue
+            best_score = score
+            best_move = move
 
-            # Jogada normal: precisa escolher onde mentorar
-            for men_row, men_col in adjacent_cells(dst_row, dst_col):
-                men_cell = board[men_row][men_col]
-                is_source = (men_row, men_col) == (cur_row, cur_col)
-                if (men_cell.professor is None or is_source) and men_cell.level < 4:
-                    candidate_moves.append(PlayerTurnResponse(
-                        professor=professor,
-                        move_to=Position(row=dst_row, col=dst_col),
-                        mentor_at=Position(row=men_row, col=men_col),
-                    ))
+    print("================================")
+    print("MELHOR SCORE:", best_score)
+    print("MELHOR JOGADA:", best_move)
+    print("================================")
 
-    # Prioridade: vitoria > jogada aleatoria
-    if winning_moves:
-        return random.choice(winning_moves)
-    if candidate_moves:
-        return random.choice(candidate_moves)
-
-    return None  # sem jogadas validas (raro, mas possivel)
+    return best_move

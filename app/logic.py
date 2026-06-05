@@ -377,6 +377,8 @@ def choose_setup(
         row=row,
         col=col,
     )
+
+
 def choose_turn(
     board,
     team_id,

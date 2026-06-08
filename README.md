@@ -1,4 +1,4 @@
-# BOT Carille API
+# PI5 backend (bot carille)
 
 API desenvolvida em Python com FastAPI para execução do BOT Carille.
 

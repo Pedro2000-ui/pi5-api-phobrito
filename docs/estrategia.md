@@ -500,4 +500,429 @@ A ordem de prioridade utilizada pelo agente é:
 
 O agente prioriza a eliminação de ameaças imediatas do adversário e, na ausência delas, procura fortalecer sua própria posição até criar oportunidades de vitória.
 
-## Testes
+## Testes e Ajustes Realizados
+
+Durante o desenvolvimento do agente foram realizados diversos testes práticos para validar se o comportamento observado correspondia à estratégia planejada.
+
+O objetivo desses testes não foi apenas verificar o funcionamento técnico do código, mas também avaliar se as decisões tomadas pelo agente estavam alinhadas com a proposta de jogo defensiva definida para o projeto.
+
+---
+
+### Teste 1 — Posicionamento Inicial Aleatório
+
+#### Implementação Inicial
+
+Na primeira versão do agente, o posicionamento dos professores durante a fase de setup era realizado de forma totalmente aleatória.
+
+Exemplo:
+
+```python
+row, col = random.choice(candidates)
+```
+
+#### Problema Observado
+
+Após algumas partidas de teste, foi percebido que o posicionamento aleatório frequentemente gerava situações desfavoráveis.
+
+Os principais problemas observados foram:
+
+- Professores posicionados em regiões periféricas do tabuleiro;
+- Grande distância entre professores do mesmo time;
+- Maior quantidade de movimentos necessários para alcançar áreas estratégicas;
+- Menor capacidade de resposta a ameaças adversárias.
+
+Exemplo observado:
+
+```text
+CLARO -> canto superior esquerdo
+REY   -> canto inferior direito
+```
+
+Nesse cenário os professores passavam vários turnos apenas se aproximando, reduzindo a capacidade estratégica da equipe.
+
+#### Solução Aplicada
+
+Foi implementada uma heurística simples de posicionamento baseada em controle do centro do tabuleiro.
+
+Foi criada uma lista de prioridades:
+
+```python
+PRIORITIES = [
+    (2, 2),
+
+    (2, 1),
+    (2, 3),
+    (1, 2),
+    (3, 2),
+
+    (1, 1),
+    (1, 3),
+    (3, 1),
+    (3, 3),
+]
+```
+
+As posições centrais passaram a ser escolhidas antes das demais posições disponíveis.
+
+#### Agrupamento dos Professores
+
+Além da priorização do centro, foi adicionada uma segunda regra.
+
+Quando o segundo professor de um time é posicionado, o agente procura uma célula adjacente ao parceiro já colocado no tabuleiro.
+
+Exemplo:
+
+```text
+CLARO -> (2,2)
+
+REY -> tenta ocupar
+(2,1)
+(2,3)
+(1,2)
+(3,2)
+...
+```
+
+#### Resultado Obtido
+
+Os testes mostraram que os professores passaram a:
+
+- alcançar regiões estratégicas mais rapidamente;
+- compartilhar áreas de influência;
+- colaborar mais facilmente na construção de torres;
+- responder melhor a ameaças próximas.
+
+O comportamento obtido foi significativamente mais consistente do que a abordagem puramente aleatória.
+
+---
+
+### Teste 2 — Verificação da Prioridade Defensiva
+
+#### Objetivo
+
+Validar se o agente realmente priorizava impedir vitórias adversárias antes de buscar vantagens próprias.
+
+#### Cenário
+
+Foi criado um estado de jogo onde o adversário possuía acesso imediato a uma construção de nível 3.
+
+Exemplo:
+
+```json
+{
+  "game_id": "test-block-1",
+  "turn_number": 20,
+  "turn_phase": "player_turn",
+  "your_team": 1,
+  "board": [
+    [
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null }
+    ],
+    [
+      { "level": 0, "professor": null },
+      { "level": 2, "professor": "CLARO" },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null }
+    ],
+    [
+      { "level": 0, "professor": null },
+      { "level": 2, "professor": "KARIN" },
+      { "level": 3, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null }
+    ],
+    [
+      { "level": 0, "professor": "REY" },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null }
+    ],
+    [
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": "BEATRIZ" },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null }
+    ]
+  ]
+}
+
+KARIN -> nível 2
+Construção nível 3 adjacente
+
+```
+
+Sem intervenção, o adversário venceria no turno seguinte.
+
+#### Resultado Esperado
+
+O agente deveria selecionar uma jogada que removesse essa possibilidade de vitória, mesmo que existissem alternativas que aumentassem seu próprio posicionamento.
+
+#### Resultado Obtido
+
+Durante a avaliação das jogadas foi possível observar que as alternativas que eliminavam a ameaça recebiam uma bonificação significativamente maior.
+
+Retorno da API:
+
+```json
+{
+  "professor": "CLARO",
+  "move_to": {
+    "row": 2,
+    "col": 2
+  },
+  "mentor_at": null
+}
+```
+
+Saída de depuração:
+
+<img width="906" height="664" alt="image" src="https://github.com/user-attachments/assets/0bef6d90-e614-4727-9aca-6a76ea3b6eb0" />
+
+As jogadas que mantinham a vitória adversária disponível recebiam pontuações inferiores.
+
+#### Conclusão
+
+O comportamento observado confirmou que a função heurística estava respeitando a prioridade estratégica definida para o projeto:
+
+```text
+Impedir vitória do adversário
+    ↓
+Fortalecer posição própria
+    ↓
+Buscar vitória
+```
+
+---
+
+### Teste 3 — Eu posso vencer E o adversário também pode vencer
+
+### Objetivo
+
+Verificar se a função heurística valoriza de fato primeiro defender e depois atacar.
+
+### Cenário
+
+Foram comparadas jogadas equivalentes onde o meu bot poderia vencer e encerrar o jogo imediatamente, mas caso não o fizesse, na jogada seguinte o bot adversário poderia vencer o jogo.
+
+Exemplo:
+
+```json
+{
+  "game_id": "test-block-vs-win",
+  "turn_number": 20,
+  "turn_phase": "player_turn",
+  "your_team": 1,
+  "board": [
+    [
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null }
+    ],
+    [
+      { "level": 0, "professor": null },
+      { "level": 2, "professor": "CLARO" },
+      { "level": 3, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null }
+    ],
+    [
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null }
+    ],
+    [
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null }
+    ],
+    [
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": "REY" },
+      { "level": 2, "professor": "BEATRIZ" },
+      { "level": 3, "professor": null },
+      { "level": 0, "professor": null }
+    ]
+  ]
+}
+```
+
+### Resultado Esperado
+
+Embora vencer a partida seja, em termos estratégicos, a ação mais vantajosa, nosso bot foi projetado com foco defensivo. Dessa forma, a heurística atribui uma pontuação maior a jogadas que eliminam ou reduzem as possibilidades de vitória do adversário. Assim, neste cenário, o comportamento esperado não é que o bot busque a vitória imediata, mas sim que priorize a neutralização da ameaça adversária, impedindo que o oponente vença na próxima jogada.
+
+### Resultado Obtido
+
+O bot Carille priorizou a defesa, e eliminou a ameaça de vitória do adversário.
+
+Retorno da API:
+
+```json
+{
+  "professor": "REY",
+  "move_to": {
+    "row": 3,
+    "col": 2
+  },
+  "mentor_at": {
+    "row": 4,
+    "col": 3
+  }
+}
+```
+
+Saída de depuração:
+
+<img width="910" height="661" alt="image" src="https://github.com/user-attachments/assets/3aa1c8a3-834b-499c-a7bc-f2345de10cff" />
+
+#### Conclusão
+
+O teste confirmou que a heurística incentiva priorizar movimentos defensivos.
+
+### Teste 4 — Validação da Função de Pontuação
+
+#### Objetivo
+
+Verificar se a função heurística estava valorizando corretamente movimentos que posicionam os professores em construções mais altas.
+
+#### Cenário
+
+Foram comparadas jogadas equivalentes que levavam o professor para níveis diferentes.
+
+Exemplo:
+
+```json
+{
+  "game_id": "test-level-up",
+  "turn_number": 20,
+  "turn_phase": "player_turn",
+  "your_team": 1,
+  "board": [
+    [
+      { "level": 0, "professor": null },
+      { "level": 1, "professor": null },
+      { "level": 2, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null }
+    ],
+    [
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": "CLARO" },
+      { "level": 1, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null }
+    ],
+    [
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": "KARIN" },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null }
+    ],
+    [
+      { "level": 0, "professor": "REY" },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null }
+    ],
+    [
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": "BEATRIZ" },
+      { "level": 0, "professor": null },
+      { "level": 0, "professor": null }
+    ]
+  ]
+}
+```
+
+#### Resultado Obtido
+
+As jogadas que posicionavam professores em níveis mais elevados receberam pontuações maiores.
+
+Retorno da API:
+
+```json
+{
+  "professor": "CLARO",
+  "move_to": {
+    "row": 1,
+    "col": 2
+  },
+  "mentor_at": {
+    "row": 0,
+    "col": 2
+  }
+}
+```
+
+Saída de depuração:
+
+<img width="921" height="662" alt="image" src="https://github.com/user-attachments/assets/aff11f6e-8ac9-4f26-a07f-371b89601132" />
+
+Isso ocorreu porque a função de avaliação considera:
+
+- o ganho imediato de altura;
+- o nível final alcançado.
+
+Trecho utilizado:
+
+```python
+delta = destination_level - current_level
+
+score += delta * 500
+
+score += (destination_level ** 2) * 100
+```
+
+Com isso, movimentos para níveis mais altos tornam-se naturalmente mais atrativos para o agente.
+
+#### Conclusão
+
+O teste confirmou que a heurística incentiva:
+
+- ocupação de construções elevadas;
+- maior mobilidade futura;
+- aproximação gradual das condições de vitória.
+  
+---
+
+### Logs
+Também foram incluídos logs de depuração na API, para acompanhar cada movimento do bot durante os jogos
+
+<img width="1388" height="662" alt="image" src="https://github.com/user-attachments/assets/b9b18613-2f4c-474d-b661-ee1ce705772f" />
+
+Com isso, conseguimos acompanhar a construção de raciocínio do bot referente a cada jogada explorada, assim como a escolha de maior pontuação (baseada na Heurística imposta).
+
+
+### Conclusão dos Testes
+
+Os experimentos realizados permitiram identificar limitações da implementação inicial e ajustar o comportamento do agente.
+
+As principais melhorias introduzidas foram:
+
+- substituição do posicionamento aleatório por posicionamento estratégico;
+- agrupamento de professores do mesmo time;
+- validação da prioridade defensiva;
+- validação da função heurística de movimentação.
+
+Como resultado, o agente passou a apresentar um comportamento mais consistente, previsível e alinhado à estratégia proposta de neutralização de ameaças adversárias antes da busca por oportunidades de vitória.
+
+Entretanto, a heurística adotada não é ótima em todos os cenários. Considere uma situação em que o adversário possui duas possibilidades simultâneas de vitória, uma para cada player, enquanto nossa equipe possui ao menos uma oportunidade de vencer imediatamente. Nesse caso, a decisão mais racional seria executar a jogada vencedora.
+
+Isso ocorre porque, mesmo priorizando a defesa, só é possível bloquear uma das ameaças adversárias por turno. Assim, ao impedir a vitória de um dos players, o outro continuaria com uma condição de vitória disponível na próxima jogada. Dessa forma, optar pelo bloqueio não elimina efetivamente o risco de derrota, enquanto a jogada de vitória encerra a partida imediatamente e garante o melhor resultado possível.
+
+> "As operações ofensivas, muitas vezes, são o meio mais seguro, senão o único, de defesa." - George Washington
